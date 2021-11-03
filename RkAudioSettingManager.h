@@ -22,17 +22,11 @@
 #define RKSOUNDSETTING_RKAUDIOSETTINGMANAGER_H_
 
 #include "RkAudioSettingInterface.h"
-#include "tinyxml.h"
 #include "audio_hw_hdmi.h"
+#include "RkAudioSettingUtils.h"
 
 namespace android {
-
-enum {
-    SELECT_DECODE     = 0,
-    SELECT_BITSTREAM  = 1,
-    ADD_NODE      = 2,
-    DELECT_NODE     = 3,
-};
+using namespace tinyxml2;
 
 class RkAudioSettingManager : public RkAudioSettingInterface {
  public:
@@ -48,32 +42,11 @@ class RkAudioSettingManager : public RkAudioSettingInterface {
     void updataFormatForEdid();
 
  protected:
-    int getAudioSettingSelect(int port);
-    void setAudioSettingSelect(int port);
-    int getAudioSettingDecodeDevice(const char *device);
-    void setAudioSettingDecodeDevice(int close, const char *device);
-    int getAudioSettingBitstreamDevice(const char *device);
-    void setAudioSettingBitstreamDevice(const char *device);
-    int getAudioSettingDecodeMode();
-    void setAudioSettingDecodeMode(int mode);
-    int getAudioSettingBitStreamMode();
-    void setAudioSettingBitStreamMode(int mode);
-    int getAudioSettingDecodeFormat(const char *ch);
-    void setAudioSettingDecodeFormat(int close, const char *ch);
-    int getAudioSettingBitstreamFormat(const char *ch);
-    void setAudioSettingBitstreamFormat(int close, const char *ch);
-    int getSelectValue(TiXmlElement *elem);
-    void setSelectValue(TiXmlElement *elem, const char *ch);
-    int setModeValue(TiXmlNode *node, const char *ch);
-    void addFormatNode(int port, const char *format);
-    void delectFormatNode(int port, const char *format);
-    void addDeviceNode(int port, const char *device);
-    void delectDeviceNode(int port, const char *device);
-    void setFormats(int port, int cmd, const char *format);
-    void setDevices(int port, int cmd, const char *device);
-    void updataFormatForAutoMode();
+    bool queryAudioSettingDevice(int device);
+    void saveFile();
+
  private:
-    TiXmlDocument *XMLDoc;
+    XMLDocument *XMLDoc;
 };
 
 }
