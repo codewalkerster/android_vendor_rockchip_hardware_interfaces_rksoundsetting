@@ -331,6 +331,11 @@ void RkAudioSettingManager::setMode(int device, int mode) {
     updataMode(pRoot, device, mode);
     saveFile();
 
+    // if set mode to hdmi auto, need to update support format from edid
+    if ((device == AUDIO_DEVICE_HDMI_BITSTREAM) && (mode == AUDIO_BITSTREAM_MODE_AUTO)) {
+        updataFormatForEdid();
+    }
+
     #ifdef DEBUG_LOG
     ALOGD("func : %s out", __FUNCTION__);
     #endif
@@ -395,6 +400,20 @@ int RkAudioSettingManager::getMode(int device) {
 void RkAudioSettingManager::updataFormatForEdid() {
     int i = 0;
     struct hdmi_audio_infors hdmi_edid;
+
+    // get bitstream mode of hdmi
+    int mode = getMode(AUDIO_DEVICE_HDMI_BITSTREAM);
+    // device = 0 mean current device is not hdmi
+    int device = getSelect(AUDIO_DEVICE_HDMI_BITSTREAM);
+
+    #ifdef DEBUG_LOG
+    ALOGD("func : %s mode = %d, device = %d", __FUNCTION__, mode, device);
+    #endif
+
+    // only hdmi auto need to udpate support format from edid
+    if (mode == AUDIO_BITSTREAM_MODE_MANUAL || device == 0) {
+        return;
+    }
 
     init_hdmi_audio(&hdmi_edid);
 
