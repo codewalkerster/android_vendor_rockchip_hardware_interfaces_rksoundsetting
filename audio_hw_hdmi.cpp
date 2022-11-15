@@ -131,13 +131,20 @@ int hdmi_edid_parse_cea_audio(unsigned char *buf, struct hdmi_audio_infors *info
     // get size of cea_audio, SAD is 3B
     count = count / 3;
     if(count > 0) {
-        audio = (struct hdmi_audio_information *)malloc(count*sizeof(struct hdmi_audio_information));
+        if (infor->audio != NULL) {
+            infor->audio = (struct hdmi_audio_information *)realloc(infor->audio, (count + infor->number) * sizeof(struct hdmi_audio_information));
+            audio = &infor->audio[infor->number];
+            infor->number += count;
+        } else {
+             audio = (struct hdmi_audio_information *)malloc(count*sizeof(struct hdmi_audio_information));
+             infor->audio = audio;
+             infor->number = count;
+        }
+
         if (audio == NULL) {
             ALOGD("%s: malloc hdmi_audio_information fail",__FUNCTION__);
             return -1;
         }
-
-        memset(audio,0,count*sizeof(struct hdmi_audio_information));
 
         for (i = 0; i < count; i++) {
             audio[i].type = (buf[i * 3 + 1] >> 3) & 0x0F;
@@ -155,9 +162,6 @@ int hdmi_edid_parse_cea_audio(unsigned char *buf, struct hdmi_audio_infors *info
             ALOGV("%s: i = %d, type = %d,channel = %d, sample = %d,value = %d",
                 __FUNCTION__,i,audio[i].type,audio[i].channel,audio[i].sample,audio[i].value);
         }
-
-        infor->number = count;
-        infor->audio = audio;
     }
 
     return 0;
