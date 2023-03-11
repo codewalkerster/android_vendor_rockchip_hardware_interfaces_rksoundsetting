@@ -18,7 +18,7 @@
 #ifndef RKAUDIOSETTING_RKAUDIOSETTING_H_
 #define RKAUDIOSETTING_RKAUDIOSETTING_H_
 
-#include "RkAudioSettingInterface.h"
+#include "RkAudioSettingManager.h"
 
 namespace android {
 
@@ -36,7 +36,7 @@ class RkAudioSetting {
     virtual void updataFormatForEdid();
 
  protected:
-    RkAudioSettingInterface  *mAudioSetting;
+    RkAudioSettingManager *mAudioSetting;
     bool  mXMLReady;
 };
 

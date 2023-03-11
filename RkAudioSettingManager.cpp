@@ -13,86 +13,64 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *
- * author: shika.zhou@rock-chips.com
- * date: 2019/06/28
+ * author: hh@rock-chips.com
+ * date: 2023/03/10
  * module: RKAudioSetting.
  */
 
+//#define LOG_NDEBUG 0
 #define LOG_TAG "RkAudioSettingManager"
 
+#include <string.h>
+#include <errno.h>
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <log/log.h>
+#include "RkAudioXmlParser.h"
 #include "RkAudioSettingManager.h"
 
 namespace android {
 
 #define RK_AUDIO_SETTING_CONFIG_FILE "/data/system/rt_audio_config.xml"
-#define RK_AUDIO_SETTING_TEMP_FILE "/data/system/rt_audio_config_temp.xml"
 #define RK_AUDIO_SETTING_SYSTEM_FILE "/system/etc/rt_audio_config.xml"
 
-struct supportHdmiLevel {
-    int hdmi_level;
-    const char *value;
-};
-
-const struct supportHdmiLevel mSupportHdmiLevel[] = {
-    {HDMI_AUDIO_AC3, "AC3"},
-    {HDMI_AUDIO_E_AC3, "EAC3"},
-    {HDMI_AUDIO_DTS, "DTS"},
-    {HDMI_AUDIO_DTS_HD, "DTSHD"},
-    {HDMI_AUDIO_MLP, "TRUEHD"},
-    {HDMI_AUDIO_MLP, "MLP"},
-};
-
-RkAudioSettingManager::RkAudioSettingManager()
-    : XMLDoc(NULL) {
-    XMLDoc = new XMLDocument();
+RkAudioSettingManager::RkAudioSettingManager() {
+    mParser = new RKAudioXmlParser();
 }
 
 RkAudioSettingManager::~RkAudioSettingManager() {
-    if (XMLDoc) {
-        delete XMLDoc;
-        XMLDoc = NULL;
+    if (mParser) {
+        delete mParser;
+        mParser = NULL;
     }
 }
 
-int RkAudioSettingManager::init() {
-    int err = 0;
+int RkAudioSettingManager::copyFile() {
     if (access(RK_AUDIO_SETTING_CONFIG_FILE, F_OK) < 0) {
-
-        if (access(RK_AUDIO_SETTING_TEMP_FILE, F_OK) >= 0) {
-            remove(RK_AUDIO_SETTING_TEMP_FILE);
-        }
-
+        // copy /system/etc/rt_audio_config.xml to /data/system/rt_audio_config.xml
+        // because there is no permission to modify /system/etc/rt_audio_config.xml.
         if (access(RK_AUDIO_SETTING_SYSTEM_FILE, F_OK) == 0) {
-            FILE *fin = NULL;
-            FILE *fout = NULL;
-            char *buff = NULL;
-            buff = (char *)malloc(1024);
-            fin = fopen(RK_AUDIO_SETTING_SYSTEM_FILE, "r");
-            fout = fopen(RK_AUDIO_SETTING_TEMP_FILE, "w");
-
-            if (fout == NULL) {
-                ALOGD("%s,%d, fdout is open fail",__FUNCTION__,__LINE__);
+            char buff[1024];
+            FILE *fin = fopen(RK_AUDIO_SETTING_SYSTEM_FILE,  "r");
+            if (fin == NULL) {
+                ALOGE("%s,%d, open %s fail, %s",__FUNCTION__,__LINE__, RK_AUDIO_SETTING_SYSTEM_FILE, strerror(errno));
             }
 
-            if (fin == NULL) {
-                ALOGD("%s,%d, fin is open fail",__FUNCTION__,__LINE__);
+            FILE *fout = fopen(RK_AUDIO_SETTING_CONFIG_FILE, "w");
+            if (fout == NULL) {
+                ALOGE("%s:%d, open %s fail, %s",__FUNCTION__,__LINE__, RK_AUDIO_SETTING_CONFIG_FILE, strerror(errno));
             }
             if(fout && fin){
                 while (1) {
-                    int ret = fread(buff, 1, 1024, fin);
-
-                    if (ret != 1024) {
-                        fwrite(buff, ret, 1, fout);
-                    } else {
-                        fwrite(buff, 1024, 1, fout);
-                    }
-                    if (feof(fin))
+                    int size = fread(buff, 1, 1024, fin);
+                    if (size <= 0)
                         break;
+
+                    fwrite(buff, size, 1, fout);
                 }
             }
+
             if (fout != NULL) {
                 fclose(fout);
                 fout = NULL;
@@ -103,32 +81,34 @@ int RkAudioSettingManager::init() {
                 fin = NULL;
             }
 
-            if (buff) {
-                free(buff);
-                buff = NULL;
-            }
-
-            if (-1 == rename(RK_AUDIO_SETTING_TEMP_FILE, RK_AUDIO_SETTING_CONFIG_FILE)) {
-                ALOGD("rename config file failed");
-                remove(RK_AUDIO_SETTING_TEMP_FILE);
-            } else {
-                ALOGD("rename config file success");
-            }
+            // for avoid datas cached
             sync();
+
+            // chmod mode
+            chmod(RK_AUDIO_SETTING_CONFIG_FILE, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
         }
     }
-    chmod(RK_AUDIO_SETTING_CONFIG_FILE, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
-    const char *errorStr = NULL;
 
+    return 0;
+}
+
+int RkAudioSettingManager::init() {
+    int err = 0;
+
+    // if /data/system/rt_audio_config.xml is not exist, copy it from /system/etc
+    copyFile();
+
+    // parser configs
     ALOGD("load XML file(%s)", RK_AUDIO_SETTING_CONFIG_FILE);
     if (access(RK_AUDIO_SETTING_CONFIG_FILE, F_OK) >= 0) {
-        if (XML_SUCCESS != XMLDoc->LoadFile(RK_AUDIO_SETTING_CONFIG_FILE)) {
-            errorStr = XMLDoc->ErrorStr();
-            ALOGD("load XML file error(%s)", errorStr);
-            remove(RK_AUDIO_SETTING_CONFIG_FILE);
-            err = -1;
-        } else {
-            err = 0;
+        // load /data/system/rt_audio_config.xml
+        err = mParser->load(RK_AUDIO_SETTING_CONFIG_FILE);
+        // if set hdmi auto mode, get the formats from edid of hdmi
+        int device = mParser->getDevice();
+        int mode   = mParser->getMode(device);
+        if ((device == AUDIO_DEVICE_HDMI_BITSTREAM) &&
+                           mode == AUDIO_BITSTREAM_MODE_AUTO) {
+            updataFormatByHdmiEdid();
         }
     } else {
         ALOGD("not find XML file %s", RK_AUDIO_SETTING_CONFIG_FILE);
@@ -153,7 +133,7 @@ int RkAudioSettingManager::init() {
  *  apk interface : query audio device
  *
  *  [param] :
- *   device :   
+ *   device :
  *       0 : decode
  *       1 : hdmi bitstream,
  *       2 : spdif passthrough
@@ -162,35 +142,9 @@ int RkAudioSettingManager::init() {
  *       1 : audio device set
  *       0 : audio device not set
 */
-int RkAudioSettingManager::getSelect(int device) {
-    int ret = 0;
-    #ifdef DEBUG_LOG
-    ALOGD("func : %s in, device : %d", __FUNCTION__, device);
-    #endif
-
-    switch (device) {
-      case AUDIO_DEVICE_DECODE: {
-        if (queryAudioSettingDevice(device)) {
-            ret = 1;
-        }
-      } break;
-      case AUDIO_DEVICE_HDMI_BITSTREAM:
-      case AUDIO_DEVICE_SPDIF_PASSTHROUGH: {
-        XMLElement *root = XMLDoc->RootElement();
-        if (queryAudioSettingDevice(device) && isSupportDevices(root, device)) {
-            ret = 1;
-        }
-      } break;
-      default:
-      ALOGE("not support query audio device(%d)", device);
-      break;
-    }
-
-    #ifdef DEBUG_LOG
-    ALOGD("func : %s out, ret : %d", __FUNCTION__, ret);
-    #endif
-
-    return ret;
+int RkAudioSettingManager::checkDevice(int device) {
+    int setting = mParser->getDevice();
+    return (device == setting)? 1 : 0;
 }
 
 /*  apk interface : set audio device
@@ -203,43 +157,9 @@ int RkAudioSettingManager::getSelect(int device) {
  *
  *  [return] : void
 */
-void RkAudioSettingManager::setSelect(int device) {
-    #ifdef DEBUG_LOG
-    ALOGD("func : %s in, device : %d", __FUNCTION__, device);
-    #endif
-    XMLElement *pRoot = XMLDoc->RootElement();
-
-    switch (device) {
-      case AUDIO_DEVICE_DECODE: {
-        audioDeviceControl(pRoot, device);
-      } break;
-      case AUDIO_DEVICE_HDMI_BITSTREAM:
-      case AUDIO_DEVICE_SPDIF_PASSTHROUGH: {
-        audioDeviceControl(pRoot, device);
-        if (!isSupportDevices(pRoot, device)) {
-            updateDevice(pRoot, device);
-        }
-        /*if user set device is hdmi bitstream, support MLP format*/
-        if (device == AUDIO_DEVICE_HDMI_BITSTREAM &&
-             !isSupportFormats(pRoot, device, AUDIO_FORMAT_MLP)) {
-            insertFormat(XMLDoc, device, AUDIO_FORMAT_MLP);
-        }
-        /*if user set device is spdif passthrough, not support MLP format*/
-        if (device == AUDIO_DEVICE_SPDIF_PASSTHROUGH &&
-             isSupportFormats(pRoot, device, AUDIO_FORMAT_MLP)) {
-            deleteFormat(XMLDoc, device, AUDIO_FORMAT_MLP);
-        }
-      } break;
-      default:
-        ALOGE("not support query audio device(%d)", device);
-        break;
-    }
-
-    saveFile();
-
-    #ifdef DEBUG_LOG
-    ALOGD("func : %s out", __FUNCTION__);
-    #endif
+void RkAudioSettingManager::setDevice(int device) {
+    ALOGV("%s:%d: device = %d",  __FUNCTION__, __LINE__, device);
+    mParser->setDevice(device);
 }
 
 /*  apk interface : set format
@@ -249,34 +169,33 @@ void RkAudioSettingManager::setSelect(int device) {
  *       0 : decode
  *       1 : hdmi bitstream,
  *       2 : spdif passthrough
- *   close :
+ *   option :
  *       0 : insert format
  *       1 : delete format
  *   format : audio format (e.g : AC3/EAC3/TRUEHD/DTSHD/DTS/MLP)
  *
  *  [return] : void
 */
-void RkAudioSettingManager::setFormat(int device, int close, const char *format) {
-    #ifdef DEBUG_LOG
-    ALOGD("func : %s in, device : %d, close : %d, format : %s", __FUNCTION__, device, close, format);
-    #endif
-
-    if (close == 0) {
-        insertFormat2(XMLDoc, device, format);
-    } else if (close == 1) {
-        deleteFormat2(XMLDoc, device, format);
-    } else {
-        ALOGE("not support set format close(%d)", close);
+void RkAudioSettingManager::setFormat(int device, int option, const char *format) {
+    (void)device;
+    ALOGV("%s:%d: device = %d, option = %d, format = %s",
+        __FUNCTION__, __LINE__, device, option, format);
+    const AudioFormatMaps *map = RkAudioSettingUtils::getFormatMapByName((char*)format);
+    if (map == NULL) {
+        ALOGE("%s: name = %s not support", __FUNCTION__, format);
+        return;
     }
 
-    saveFile();
-
-    #ifdef DEBUG_LOG
-    ALOGD("func : %s out", __FUNCTION__);
-    #endif
+    if (option == AUDIO_FORMAT_INSERT) {
+        mParser->insertFormat((char*)format, map->settingFormat);
+    } else if (option == AUDIO_FORMAT_DELETE) {
+        mParser->deleteFormat((char*)format, map->settingFormat);
+    } else {
+        ALOGE("not support set format option(%d)", option);
+    }
 }
 
-/*  apk interface : set format
+/*  apk interface : check format is support?
  *
  *  [param] :
  *   device :
@@ -290,22 +209,15 @@ void RkAudioSettingManager::setFormat(int device, int close, const char *format)
  *       1 : query format support
 */
 int RkAudioSettingManager::getFormat(int device, const char *format) {
-    #ifdef DEBUG_LOG
-    ALOGD("func : %s in, device = %d, format = %s", __FUNCTION__, device, format);
-    #endif
-
-    int ret = 0;
-    XMLElement *pRoot = XMLDoc->RootElement();
-
-    if (isSupportFormats2(pRoot, device, format)) {
-        ret = 1;
-    } else {
-        ret = 0;
+    const AudioFormatMaps *map = RkAudioSettingUtils::getFormatMapByName((char*)format);
+    if (map == NULL) {
+        ALOGE("%s: name = %s not support", __FUNCTION__, format);
+        return AUDIO_SETTING_UNSUPPORT;
     }
 
-    #ifdef DEBUG_LOG
-    ALOGD("func : %s out, ret = %d", __FUNCTION__, ret);
-    #endif
+    int ret = mParser->checkFormatSupport(device, map->settingFormat);
+    ALOGV("%s:%d: device = %d, format = %s %s",
+        __FUNCTION__, __LINE__, device, format, ret ? "support": "unsupport");
 
     return ret;
 }
@@ -323,22 +235,11 @@ int RkAudioSettingManager::getFormat(int device, const char *format) {
  *  [return] : void
  */
 void RkAudioSettingManager::setMode(int device, int mode) {
-    #ifdef DEBUG_LOG
-    ALOGD("func : %s in, device : %d, mode : %d", __FUNCTION__, device, mode);
-    #endif
-    XMLElement *pRoot = XMLDoc->RootElement();
-
-    updataMode(pRoot, device, mode);
-    saveFile();
-
-    // if set mode to hdmi auto, need to update support format from edid
+    ALOGV("%s:%d: device = %d, mode = %d", __FUNCTION__, __LINE__, device, mode);
+    mParser->setMode(device, mode);
     if ((device == AUDIO_DEVICE_HDMI_BITSTREAM) && (mode == AUDIO_BITSTREAM_MODE_AUTO)) {
-        updataFormatForEdid();
+        updataFormatByHdmiEdid();
     }
-
-    #ifdef DEBUG_LOG
-    ALOGD("func : %s out", __FUNCTION__);
-    #endif
 }
 
 /*  apk interface : get mode
@@ -354,129 +255,44 @@ void RkAudioSettingManager::setMode(int device, int mode) {
  *
  */
 int RkAudioSettingManager::getMode(int device) {
-    #ifdef DEBUG_LOG
-    ALOGD("func : %s in, device = %d", __FUNCTION__, device);
-    #endif
-
-    int ret = -1;
-    XMLElement *pModeEle = NULL;
-    if (isSettingDecode(device)) {
-        pModeEle = XMLDoc->RootElement()->FirstChildElement(DECODE)->FirstChildElement(MODE);
-        if (pModeEle) {
-            if (strcmp(pModeEle->GetText(), MULTI_PCM) == 0) {
-                ALOGV("func : %s, get mode : multi pcm", __FUNCTION__);
-                return 0;
-            } else {
-                ALOGV("func : %s, get default mode : decode", __FUNCTION__);
-               return 1;
-            }
-        }
-    } else if (isSettingBitStream(device) || isSettingSpdif(device)) {
-        pModeEle = XMLDoc->RootElement()->FirstChildElement(BITSTREAM)->FirstChildElement(MODE);
-        if (pModeEle) {
-            if (strcmp(pModeEle->GetText(), MANUAL) == 0) {
-                ALOGV("func : %s, get mode : manual", __FUNCTION__);
-                return 1;
-            } else if (strcmp(pModeEle->GetText(), AUTO) == 0) {
-                ALOGV("func : %s, get default mode : auto", __FUNCTION__);
-                return 0;
-            }
-        }
-    } else {
-        ret = -1;
-        ALOGE("not support device : %d ", device);
-    }
-
-    #ifdef DEBUG_LOG
-    ALOGD("func : %s out, ret : %d", __FUNCTION__, ret);
-    #endif
-    return ret;
+    return mParser->getMode(device);
 }
 
 /*  1. parse hdmi edid information HDMI_EDID_NODE, get hdmi support information of audio.
  *  2. according to audio format of edid info which parsed, updata XML bitstream formats when
  *     select "auto" mode.
  */
-void RkAudioSettingManager::updataFormatForEdid() {
+void RkAudioSettingManager::updataFormatByHdmiEdid() {
     int i = 0;
     struct hdmi_audio_infors hdmi_edid;
 
     // get bitstream mode of hdmi
     int mode = getMode(AUDIO_DEVICE_HDMI_BITSTREAM);
-    // device = 0 mean current device is not hdmi
-    int device = getSelect(AUDIO_DEVICE_HDMI_BITSTREAM);
+    int device = mParser->getDevice();
 
-    #ifdef DEBUG_LOG
-    ALOGD("func : %s mode = %d, device = %d", __FUNCTION__, mode, device);
-    #endif
-
-    // only hdmi auto need to udpate support format from edid
-    if (mode == AUDIO_BITSTREAM_MODE_MANUAL || device == 0) {
+    // only udpate support formats from hdmi's edid when setting mode is hdmi auto
+    if (mode == AUDIO_BITSTREAM_MODE_MANUAL || device != AUDIO_DEVICE_HDMI_BITSTREAM) {
+        ALOGV("%s:%d, mode = %d, device = %d", __FUNCTION__, __LINE__, mode, device);
         return;
     }
 
+    // clear all format
+    mParser->clearFormats(AUDIO_DEVICE_HDMI_BITSTREAM);
     init_hdmi_audio(&hdmi_edid);
-
-    #ifdef DEBUG_LOG
-    ALOGD("func : %s in", __FUNCTION__);
-    #endif
-
     if (parse_hdmi_audio(&hdmi_edid) >= 0) {
-        for (i = 0; i < RK_ARRAY_ELEMS(mSupportHdmiLevel); i++) {
-            if (is_support_format(&hdmi_edid, mSupportHdmiLevel[i].hdmi_level)) {
-                int support = getFormat(AUDIO_DEVICE_HDMI_BITSTREAM, mSupportHdmiLevel[i].value);
-                if (!support) {
-                    setFormat(AUDIO_DEVICE_HDMI_BITSTREAM, 0, mSupportHdmiLevel[i].value);
-                }
+        dump(&hdmi_edid);
+        int size = RkAudioSettingUtils::getFormatsArraySize();
+        for (i = 0; i < size; i++) {
+            const AudioFormatMaps* maps = RkAudioSettingUtils::getFormatMapByIndex(i);
+            if (is_support_format(&hdmi_edid, maps->hdmiFormat)) {
+                setFormat(AUDIO_DEVICE_HDMI_BITSTREAM, AUDIO_FORMAT_INSERT, maps->name);
             } else {
-                int support = getFormat(AUDIO_DEVICE_HDMI_BITSTREAM, mSupportHdmiLevel[i].value);
-                if (support == 1) {
-                    setFormat(AUDIO_DEVICE_HDMI_BITSTREAM, 1, mSupportHdmiLevel[i].value);
-                }
+                setFormat(AUDIO_DEVICE_HDMI_BITSTREAM, AUDIO_FORMAT_DELETE, maps->name);
             }
         }
     }
-    saveFile();
+
     destory_hdmi_audio(&hdmi_edid);
-
-    #ifdef DEBUG_LOG
-    ALOGD("func : %s out", __FUNCTION__);
-    #endif
-}
-
-bool RkAudioSettingManager::queryAudioSettingDevice(int device) {
-    bool ret = false;
-    XMLElement *ele = NULL;
-    #ifdef DEBUG_LOG
-    ALOGD("func %s, in, device : %d", __FUNCTION__, device);
-    #endif
-
-    if (XMLDoc != NULL) {
-        XMLElement *mRoot = XMLDoc->RootElement();
-        if (device == AUDIO_DEVICE_DECODE) {
-            ele = mRoot->FirstChildElement(DECODE);
-            return isAudioDeviceSupport(ele);
-        } else if (device == AUDIO_DEVICE_HDMI_BITSTREAM
-                   || device == AUDIO_DEVICE_SPDIF_PASSTHROUGH) {
-            ele = mRoot->FirstChildElement(BITSTREAM);
-            return isAudioDeviceSupport(ele);
-        }
-    } else {
-        ALOGE("XMLDocument is NULL");
-        ret = false;
-    }
-
-    return ret;
-}
-
-void RkAudioSettingManager::saveFile() {
-    if (XMLDoc) {
-        if (access(RK_AUDIO_SETTING_CONFIG_FILE, F_OK) >= 0) {
-            XMLDoc->SaveFile(RK_AUDIO_SETTING_CONFIG_FILE);
-        } else {
-            ALOGE("save file not find XML file! ");
-        }
-    }
 }
 
 }

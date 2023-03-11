@@ -17,41 +17,41 @@
 
 
 #define LOG_TAG "RkAudioSetting-service"
-#include <android-base/logging.h>
 #include <log/log.h>
 #include <string.h>
-#include "RkAudioSettingManager.h"
 #include "RkAudioSetting.h"
 
 namespace android {
 
+static RkAudioSettingManager* sAudioSetting = NULL;
+static bool sXMLReady = false;
+
 RkAudioSetting::RkAudioSetting() {
     int tryNum = 5;
-    mXMLReady = false;
-    mAudioSetting = (RkAudioSettingInterface*) new RkAudioSettingManager();
-
-    while (tryNum >= 0) {
-        if (mAudioSetting->init() < 0) {
-            ALOGD("try init audiosetting tryNum = %d", tryNum);
-            tryNum--;
-            mXMLReady = false;
-        } else {
-            mXMLReady = true;
-            break;
+    if (sAudioSetting == NULL) {
+        sAudioSetting = new RkAudioSettingManager();
+        while (tryNum >= 0) {
+            if (sAudioSetting->init() < 0) {
+                ALOGD("try init audiosetting tryNum = %d", tryNum);
+                tryNum--;
+                sXMLReady = false;
+            } else {
+                sXMLReady = true;
+                break;
+            }
         }
     }
+
+    mAudioSetting = sAudioSetting;
+    mXMLReady = sXMLReady;
 }
 
 RkAudioSetting::~RkAudioSetting() {
-    if (mAudioSetting) {
-        delete(mAudioSetting);
-        mAudioSetting = NULL;
-    }
 }
 
 void RkAudioSetting::setSelect(int device) {
     if (mXMLReady) {
-        mAudioSetting->setSelect(device);
+        mAudioSetting->setDevice(device);
     }
 }
 
@@ -70,7 +70,7 @@ void RkAudioSetting::setMode(int device, int mode) {
 int RkAudioSetting::getSelect(int device) {
     int val = 0;
     if (mXMLReady) {
-        val = mAudioSetting->getSelect(device);
+        val = mAudioSetting->checkDevice(device);
     }
     return val;
 }
@@ -93,7 +93,7 @@ int RkAudioSetting::getFormat(int device, const char *format) {
 
 void RkAudioSetting::updataFormatForEdid() {
     if (mXMLReady) {
-        mAudioSetting->updataFormatForEdid();
+        mAudioSetting->updataFormatByHdmiEdid();
     }
 }
 

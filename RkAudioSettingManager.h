@@ -21,32 +21,30 @@
 #ifndef RKSOUNDSETTING_RKAUDIOSETTINGMANAGER_H_
 #define RKSOUNDSETTING_RKAUDIOSETTINGMANAGER_H_
 
-#include "RkAudioSettingInterface.h"
 #include "audio_hw_hdmi.h"
 #include "RkAudioSettingUtils.h"
 
 namespace android {
-using namespace tinyxml2;
+class RKAudioXmlParser;
 
-class RkAudioSettingManager : public RkAudioSettingInterface {
+class RkAudioSettingManager {
  public:
     RkAudioSettingManager();
     virtual ~RkAudioSettingManager();
     int init();
-    int getSelect(int device);
-    void setSelect(int device);
-    void setFormat(int device, int close, const char *format);
+    int  checkDevice(int device);
+    void setDevice(int device);
+    void setFormat(int device, int option, const char *format);
     int getFormat(int device, const char *format);
     void setMode(int device, int mode);
     int getMode(int device);
-    void updataFormatForEdid();
+    void updataFormatByHdmiEdid();
 
  protected:
-    bool queryAudioSettingDevice(int device);
-    void saveFile();
+    int  copyFile();
 
  private:
-    XMLDocument *XMLDoc;
+    RKAudioXmlParser  *mParser;
 };
 
 }

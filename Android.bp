@@ -1,10 +1,11 @@
 cc_library_shared {
 
     srcs: [
+        "RkAudioSettingUtils.cpp",
+        "RkAudioXmlParser.cpp",
         "RkAudioSettingManager.cpp",
         "audio_hw_hdmi.cpp",
         "RkAudioSetting.cpp",
-        "RkAudioSettingUtils.cpp",
     ],
 
     include_dirs: [

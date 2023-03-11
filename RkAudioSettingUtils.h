@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Rockchip Electronics Co. LTD
+ * Copyright 2023 Rockchip Electronics Co. LTD
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,44 +15,17 @@
  *
  */
 
-#ifndef RKAUDIOSETTING_RKAUDIOSETTINGUTILS_H_
-#define RKAUDIOSETTING_RKAUDIOSETTINGUTILS_H_
-
-#include <android-base/logging.h>
-#include <log/log.h>
-#include "tinyxml2.h"
+#ifndef _RK_AUDIO_SETTING_UTILS_H_
+#define _RK_AUDIO_SETTING_UTILS_H_
 
 namespace android {
 
-using namespace tinyxml2;
-
-// #define DEBUG_LOG
-
-#define DECODE       "decode"
-#define BITSTREAM    "bitstream"
-#define MODE         "mode"
-#define SETTING      "setting"
-#define DEVICES      "devices"
-#define DEVICE       "device"
-#define FORMATS      "formats"
-#define FORMAT       "format"
-#define SPEAKER      "speaker"
-#define HDMI         "hdmi"
-#define SPDIF        "spdif"
-#define MULTI_PCM    "multi_pcm"
-#define PCM          "pcm"
-#define AUTO         "auto"
-#define MANUAL       "manual"
-#define YES          "yes"
-#define NO           "no"
-#define AC3          "AC3"
-#define EAC3         "EAC3"
-#define DTS          "DTS"
-#define TRUEHD       "TRUEHD"
-#define MLP          "MLP"
-#define DTSHD        "DTSHD"
-
-#define RK_ARRAY_ELEMS(a) (sizeof(a) / sizeof((a)[0]))
+typedef struct _RKAudioFormatMaps {
+    int androidformat;    // format value defined in android
+    int settingFormat;    // format value settted by setting app
+    int hdmiFormat;       // format value get/set by hdmi edid
+    char name[16];
+} AudioFormatMaps;
 
 enum {
     AUDIO_DEVICE_DECODE = 0,
@@ -63,40 +36,45 @@ enum {
 enum {
     AUDIO_DECODE_MODE_PCM       = 0,
     AUDIO_DECODE_MODE_MULTI_PCM = 1,
+    AUDIO_DECODE_MODE_BUTT      = 2,
 };
 
 enum {
     AUDIO_BITSTREAM_MODE_AUTO   = 0,
     AUDIO_BITSTREAM_MODE_MANUAL = 1,
+    AUDIO_BITSTREAM_MODE_BUTT   = 2,
+};
+
+enum {
+    AUDIO_SETTING_UNSUPPORT = 0,
+    AUDIO_SETTING_SUPPORT   = 1,
+};
+
+enum {
+    AUDIO_FORMAT_INSERT = 0,
+    AUDIO_FORMAT_DELETE = 1,
 };
 
 typedef enum rkAUDIO_SETTING_FORMAT_E {
-    AUDIO_FORMAT_AC3 = 0,
-    AUDIO_FORMAT_EAC3,
-    AUDIO_FORMAT_DTS,
-    AUDIO_FORMAT_TRUEHD,
-    AUDIO_FORMAT_DTSHD,
-    AUDIO_FORMAT_MLP,
-
-    AUDIO_TRACK_BUTT,
+    AUDIO_SETTING_FORMAT_AC3  = 0,
+    AUDIO_SETTING_FORMAT_EAC3,
+    AUDIO_SETTING_FORMAT_DTS,
+    AUDIO_SETTING_FORMAT_TRUEHD,
+    AUDIO_SETTING_FORMAT_DTSHD,
+    AUDIO_SETTING_FORMAT_MLP,
+    AUDIO_SETTING_FORMAT_BUTT,
 } AUDIO_SETTING_FORMAT_E;
 
-bool isSettingDecode(int device);
-bool isSettingBitStream(int device);
-bool isSettingSpdif(int device);
-bool isAudioDeviceSupport(XMLElement *pEle);
-bool isSupportFormats(XMLElement *pRoot, int device, int format);
-bool isSupportFormats2(XMLElement *pRoot, int device, const char *format);
-bool isSupportDevices(XMLElement *pRoot, int device);
-void audioDeviceControl(XMLElement *pRoot, int device);
-void updateDevice(XMLElement *pRoot, int device);
-void updataMode(XMLElement *pRoot, int device ,int mode);
-void insertFormat(XMLDocument *pDoc, int device, int format);
-void deleteFormat(XMLDocument *pDoc, int device, int format);
-void insertFormat2(XMLDocument *pDoc, int device, const char *format);
-void deleteFormat2(XMLDocument *pDoc, int device, const char *format);
+class RkAudioSettingUtils {
+public:
+    static int getFormatsArraySize();
+    static const AudioFormatMaps* getFormatMapByIndex(int index);
+    static const AudioFormatMaps* getFormatMapByAndroidFormat(int format);
+    static const AudioFormatMaps* getFormatMapBySettingFormat(int format);
+    static const AudioFormatMaps* getFormatMapByHdmiFormat(int format);
+    static const AudioFormatMaps* getFormatMapByName(char* name);
+};
 
-} // namespace android
+}
 
-#endif  // RKAUDIOSETTING_RKAUDIOSETTINGUTILS_H_
-
+#endif  // _RK_AUDIO_SETTING_UTILS_H_
