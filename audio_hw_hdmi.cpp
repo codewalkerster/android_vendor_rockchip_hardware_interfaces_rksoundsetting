@@ -34,10 +34,16 @@
 #define HDMI_AUDIO_LPCM         1
 
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof((a)[0]))
+#define MAX_HDMI 2
 
 struct HDMI_Audio_Sample {
     int index;
     int sample;
+};
+
+const char *HDMI_EDID_NODE[MAX_HDMI] = {
+    "/sys/class/drm/card0-HDMI-A-1/edid",   // hdmi0
+    "/sys/class/drm/card0-HDMI-A-2/edid",   // hdmi1
 };
 
 const struct HDMI_Audio_Sample HDMI_SAMPLE_TABLE[] =
@@ -315,7 +321,6 @@ int hdmi_parse_base_block(unsigned char *buf, int *extend_num)
 void init_hdmi_audio(struct hdmi_audio_infors *infor)
 {
     if(infor != NULL) {
-        pthread_mutex_init(&infor->lock, NULL);
         infor->number = 0;
         infor->channel_layout = -1;
         infor->audio = NULL;
@@ -325,7 +330,6 @@ void init_hdmi_audio(struct hdmi_audio_infors *infor)
 void destory_hdmi_audio(struct hdmi_audio_infors *infor)
 {
     if(infor != NULL) {
-        pthread_mutex_lock(&infor->lock);
         if(infor->audio != NULL) {
             free(infor->audio);
             infor->audio = NULL;
@@ -333,8 +337,6 @@ void destory_hdmi_audio(struct hdmi_audio_infors *infor)
 
         infor->number = 0;
         infor->channel_layout = -1;
-        pthread_mutex_unlock(&infor->lock);
-        pthread_mutex_destroy(&infor->lock);
     }
 }
 
@@ -348,7 +350,6 @@ int get_hdmi_audio_speaker_allocation(struct hdmi_audio_infors *infor)
         return AUDIO_CHANNEL_OUT_STEREO;
     }
 
-    pthread_mutex_lock(&infor->lock);
     int layout = AUDIO_CHANNEL_NONE;
     int length = ARRAY_SIZE(HDMI_SPEAKER_ALLOCATION_TABLE);
     for(int i = 0; i < length; i++) {
@@ -356,27 +357,28 @@ int get_hdmi_audio_speaker_allocation(struct hdmi_audio_infors *infor)
             layout |= HDMI_SPEAKER_ALLOCATION_TABLE[i].location;
         }
     }
-    pthread_mutex_unlock(&infor->lock);
     return layout;
 }
 
-int parse_hdmi_audio(struct hdmi_audio_infors *infor)
+int parse_hdmi_audio(struct hdmi_audio_infors *infor, int index)
 {
     if(infor == NULL) {
-        ALOGD("%s: error, input parameter is NULL",__FUNCTION__);
+        ALOGD("%s: error, input parameter is NULL", __FUNCTION__);
         return -1;
     }
 
-    FILE* file = fopen("/sys/class/display/HDMI/edid","rb");
-    if(file == NULL) {
-        file = fopen("/sys/class/drm/card0-HDMI-A-1/edid","rb");
-        if(file == NULL) {
-            ALOGD("%s: open fail,reason = %s",__FUNCTION__,strerror(errno));
-            return -1;
-        }
+    if (index >= MAX_HDMI) {
+        ALOGD("%s: error, input index(%d) >= size(%d)",
+            __FUNCTION__, index, MAX_HDMI);
+        return -1;
     }
 
-    pthread_mutex_lock(&infor->lock);
+    FILE *file = fopen(HDMI_EDID_NODE[index], "rb");
+    if(file == NULL) {
+        ALOGD("%s: open fail,reason = %s",__FUNCTION__,strerror(errno));
+        return -1;
+    }
+
     // there is 128 bytes in every block
     unsigned char buffer[HDMI_EDID_BLOCK_SIZE];
     memset(buffer, 0, HDMI_EDID_BLOCK_SIZE);
@@ -414,8 +416,8 @@ int parse_hdmi_audio(struct hdmi_audio_infors *infor)
             }
         }
     }
-    pthread_mutex_unlock(&infor->lock);
 
+    fclose(file);
     dump(infor);
     return 0;
 }
@@ -438,7 +440,6 @@ bool is_support_format(struct hdmi_audio_infors *infor, int hdmi_level) {
         return false;
     }
 
-    pthread_mutex_lock(&infor->lock);
     bool support = false;
     for(int i = 0; i < infor->number; i++) {
         if(hdmi_level == (int)infor->audio[i].type) {
@@ -446,7 +447,6 @@ bool is_support_format(struct hdmi_audio_infors *infor, int hdmi_level) {
             break;
         }
     }
-    pthread_mutex_unlock(&infor->lock);
     return support;
 }
 
@@ -577,7 +577,6 @@ void dump(struct hdmi_audio_infors *infor)
     char format[20];
     char sample[1024];
 
-    pthread_mutex_lock(&infor->lock);
     for(int i = 0; i < infor->number; i++) {
         if(infor->audio[i].type == 0){
             continue;
@@ -591,5 +590,4 @@ void dump(struct hdmi_audio_infors *infor)
     if(infor->channel_layout != -1){
         dump_hdmi_audio_speaker_layout(infor->channel_layout);
     }
-    pthread_mutex_unlock(&infor->lock);
 }

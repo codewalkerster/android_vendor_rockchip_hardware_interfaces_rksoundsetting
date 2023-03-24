@@ -265,6 +265,8 @@ int RkAudioSettingManager::getMode(int device) {
 void RkAudioSettingManager::updataFormatByHdmiEdid() {
     int i = 0;
     struct hdmi_audio_infors hdmi_edid;
+    int support[AUDIO_SETTING_FORMAT_BUTT] = {0};
+    int size = RkAudioSettingUtils::getFormatsArraySize();
 
     // get bitstream mode of hdmi
     int mode = getMode(AUDIO_DEVICE_HDMI_BITSTREAM);
@@ -275,24 +277,28 @@ void RkAudioSettingManager::updataFormatByHdmiEdid() {
         ALOGV("%s:%d, mode = %d, device = %d", __FUNCTION__, __LINE__, mode, device);
         return;
     }
-
-    // clear all format
-    mParser->clearFormats(AUDIO_DEVICE_HDMI_BITSTREAM);
+    
     init_hdmi_audio(&hdmi_edid);
-    if (parse_hdmi_audio(&hdmi_edid) >= 0) {
-        dump(&hdmi_edid);
-        int size = RkAudioSettingUtils::getFormatsArraySize();
+    if (parse_hdmi_audio(&hdmi_edid, 0) >= 0) {
         for (i = 0; i < size; i++) {
             const AudioFormatMaps* maps = RkAudioSettingUtils::getFormatMapByIndex(i);
             if (is_support_format(&hdmi_edid, maps->hdmiFormat)) {
-                setFormat(AUDIO_DEVICE_HDMI_BITSTREAM, AUDIO_FORMAT_INSERT, maps->name);
-            } else {
-                setFormat(AUDIO_DEVICE_HDMI_BITSTREAM, AUDIO_FORMAT_DELETE, maps->name);
+                support[maps->settingFormat] = 1;
             }
         }
     }
-
     destory_hdmi_audio(&hdmi_edid);
+
+    // clear all format
+    mParser->clearFormats(AUDIO_DEVICE_HDMI_BITSTREAM);
+    for (i = 0; i < size; i++) {
+        const AudioFormatMaps* maps = RkAudioSettingUtils::getFormatMapByIndex(i);
+        if (support[maps->settingFormat]) {
+            setFormat(AUDIO_DEVICE_HDMI_BITSTREAM, AUDIO_FORMAT_INSERT, maps->name);
+        } else {
+            setFormat(AUDIO_DEVICE_HDMI_BITSTREAM, AUDIO_FORMAT_DELETE, maps->name);
+        }
+    }
 }
 
 }
