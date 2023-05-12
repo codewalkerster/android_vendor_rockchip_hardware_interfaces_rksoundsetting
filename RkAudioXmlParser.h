@@ -60,6 +60,9 @@ private:
     void clearXmlFormats();
     void saveFile();
 
+    RKAudioXmlParser(const RKAudioXmlParser &parser) = delete;
+    RKAudioXmlParser& operator=(const RKAudioXmlParser &parser) = delete;
+
 private:
     XMLDocument *mXmlDoc;
     int  mDevice; // decode mode or hdmi or spdif passthrough

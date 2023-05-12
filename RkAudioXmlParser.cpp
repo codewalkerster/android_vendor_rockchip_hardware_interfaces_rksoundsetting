@@ -92,7 +92,7 @@ RKAudioXmlParser::~RKAudioXmlParser() {
     }
 
     if (mPath) {
-        delete mPath;
+        delete[] mPath;
         mPath = NULL;
     }
 }

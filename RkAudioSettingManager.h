@@ -44,6 +44,10 @@ class RkAudioSettingManager {
     int  copyFile();
 
  private:
+    RkAudioSettingManager(const RkAudioSettingManager &manager) = delete;
+    RkAudioSettingManager& operator=(const RkAudioSettingManager &manager) = delete;
+
+ private:
     RKAudioXmlParser  *mParser;
 };
 
